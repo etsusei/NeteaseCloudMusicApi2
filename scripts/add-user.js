@@ -26,7 +26,7 @@ async function addUser(username, password, isAdmin = false) {
 
     // Insert user
     const result = await client.query(
-      'INSERT INTO users (username, password_hash, is_admin) VALUES ($1, $2, $3) RETURNING id',
+      'INSERT INTO users (username, password, is_admin) VALUES ($1, $2, $3) RETURNING id',
       [username, passwordHash, isAdmin]
     );
 
