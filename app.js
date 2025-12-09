@@ -47,13 +47,7 @@ app.use((req, res, next) => {
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: false }))
 
-// cache
-app.use(cache('2 minutes', ((req, res) => res.statusCode === 200)))
-
-// static
-app.use(express.static(path.join(__dirname, 'public')))
-
-// ========== 用户认证和歌单 API ==========
+// ========== 用户认证和歌单 API (不使用缓存) ==========
 const authRouter = require('./routes/auth')
 const playlistsRouter = require('./routes/playlists')
 const exportRouter = require('./routes/export')
@@ -61,7 +55,14 @@ const exportRouter = require('./routes/export')
 app.use('/api/auth', authRouter)
 app.use('/api/playlists', playlistsRouter)
 app.use('/api/export', exportRouter)
-// ========================================
+// ====================================================
+
+// cache (只用于网易云音乐 API，不影响上面的用户 API)
+app.use(cache('2 minutes', ((req, res) => res.statusCode === 200)))
+
+// static
+app.use(express.static(path.join(__dirname, 'public')))
+
 
 // 代理路由 - 伪造请求头获取第三方音乐 URL
 app.get('/proxy', async (req, res) => {
