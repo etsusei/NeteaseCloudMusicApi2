@@ -69,37 +69,47 @@ app.get('/proxy', async (req, res) => {
 
   try {
     const https = require('https')
-    const http = require('http')
-
-    const options = {
-      headers: {
-        'Referer': 'https://mu-jie.cc/',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
-        'Accept': '*/*',
-      }
-    }
+    const { URL } = require('url')
 
     // 发起请求并跟随重定向
-    const fetchWithRedirect = (url, maxRedirects = 10) => {
+    const fetchWithRedirect = (urlString, maxRedirects = 10) => {
       return new Promise((resolve, reject) => {
-        const protocol = url.startsWith('https') ? https : http
+        const urlObj = new URL(urlString)
 
-        const req = protocol.get(url, options, (response) => {
+        const options = {
+          hostname: urlObj.hostname,
+          port: urlObj.port || 443,
+          path: urlObj.pathname + urlObj.search,
+          method: 'GET',
+          headers: {
+            'Referer': 'https://mu-jie.cc/',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
+            'Accept': '*/*',
+          }
+        }
+
+        const request = https.request(options, (response) => {
           if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
             if (maxRedirects > 0) {
-              resolve(fetchWithRedirect(response.headers.location, maxRedirects - 1))
+              // 处理相对路径重定向
+              let redirectUrl = response.headers.location
+              if (!redirectUrl.startsWith('http')) {
+                redirectUrl = `https://${urlObj.hostname}${redirectUrl}`
+              }
+              resolve(fetchWithRedirect(redirectUrl, maxRedirects - 1))
             } else {
               reject(new Error('Too many redirects'))
             }
           } else {
             resolve({
-              url: url,
+              url: urlString,
               statusCode: response.statusCode
             })
           }
         })
 
-        req.on('error', reject)
+        request.on('error', reject)
+        request.end()
       })
     }
 
