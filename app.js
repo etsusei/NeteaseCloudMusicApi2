@@ -53,6 +53,16 @@ app.use(cache('2 minutes', ((req, res) => res.statusCode === 200)))
 // static
 app.use(express.static(path.join(__dirname, 'public')))
 
+// ========== 用户认证和歌单 API ==========
+const authRouter = require('./routes/auth')
+const playlistsRouter = require('./routes/playlists')
+const exportRouter = require('./routes/export')
+
+app.use('/api/auth', authRouter)
+app.use('/api/playlists', playlistsRouter)
+app.use('/api/export', exportRouter)
+// ========================================
+
 // 代理路由 - 伪造请求头获取第三方音乐 URL
 app.get('/proxy', async (req, res) => {
   const id = req.query.id
