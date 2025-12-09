@@ -28,6 +28,7 @@ router.get('/', async (req, res) => {
         [playlist.id]
       );
       playlists.push({
+        id: playlist.id,
         name: playlist.name,
         cover: playlist.cover,
         songs: songsResult.rows
@@ -37,7 +38,7 @@ router.get('/', async (req, res) => {
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
-      username: userResult.rows[0] && userResult.rows[0].username,
+      username: userResult.rows[0] ? userResult.rows[0].username : null,
       playlists
     };
 
