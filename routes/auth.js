@@ -15,7 +15,7 @@ router.post('/login', async (req, res) => {
 
   try {
     const result = await pool.query(
-      'SELECT id, username, password_hash, is_admin FROM users WHERE username = $1',
+      'SELECT id, username, password, is_admin FROM users WHERE username = $1',
       [username]
     );
 
@@ -24,7 +24,7 @@ router.post('/login', async (req, res) => {
     }
 
     const user = result.rows[0];
-    const validPassword = await bcrypt.compare(password, user.password_hash);
+    const validPassword = await bcrypt.compare(password, user.password);
 
     if (!validPassword) {
       return res.status(401).json({ code: 401, msg: '用户名或密码错误' });
@@ -75,7 +75,7 @@ router.put('/profile', authMiddleware, async (req, res) => {
   try {
     // 验证当前密码
     const userResult = await pool.query(
-      'SELECT password_hash FROM users WHERE id = $1',
+      'SELECT password FROM users WHERE id = $1',
       [req.user.id]
     );
 
@@ -83,7 +83,7 @@ router.put('/profile', authMiddleware, async (req, res) => {
       return res.status(404).json({ code: 404, msg: '用户不存在' });
     }
 
-    const validPassword = await bcrypt.compare(password, userResult.rows[0].password_hash);
+    const validPassword = await bcrypt.compare(password, userResult.rows[0].password);
     if (!validPassword) {
       return res.status(401).json({ code: 401, msg: '当前密码错误' });
     }
@@ -103,7 +103,7 @@ router.put('/profile', authMiddleware, async (req, res) => {
     // 更新密码
     if (newPassword) {
       const newHash = await bcrypt.hash(newPassword, 10);
-      await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, req.user.id]);
+      await pool.query('UPDATE users SET password = $1 WHERE id = $2', [newHash, req.user.id]);
     }
 
     res.json({ code: 200, msg: '更新成功' });
