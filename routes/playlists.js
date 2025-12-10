@@ -83,7 +83,7 @@ router.get('/:id/songs', async (req, res) => {
     }
 
     const result = await pool.query(
-      'SELECT * FROM playlist_songs WHERE playlist_id = $1 ORDER BY added_at DESC',
+      'SELECT * FROM playlist_songs WHERE playlist_id = $1 ORDER BY added_at ASC',
       [id]
     );
     res.json({ code: 200, data: result.rows });
