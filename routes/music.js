@@ -107,4 +107,91 @@ router.get('/url', async (req, res) => {
   })
 })
 
+// 代理下载接口 - 解决前端 CORS 跨域问题
+router.get('/download', async (req, res) => {
+  const { id, name } = req.query
+
+  if (!id) {
+    return res.status(400).json({
+      code: 400,
+      msg: 'Missing id parameter'
+    })
+  }
+
+  console.log(`[Download] 开始下载: ${id}`)
+
+  // 获取音频 URL
+  let audioUrl = null
+  let source = null
+
+  // 1. 尝试 VIP 接口
+  const vipResult = await getSongUrlInternal(id, req.cookies)
+  if (vipResult.success) {
+    audioUrl = vipResult.url
+    source = vipResult.source
+    console.log(`[Download] VIP接口成功: ${id}`)
+  } else {
+    // 2. 尝试第三方接口
+    const fallbackResult = await getSongUrlFallback(id)
+    if (fallbackResult.success) {
+      audioUrl = fallbackResult.url
+      source = fallbackResult.source
+      console.log(`[Download] 第三方接口成功: ${id}`)
+    }
+  }
+
+  if (!audioUrl) {
+    console.log(`[Download] 获取URL失败: ${id}`)
+    return res.status(404).json({
+      code: 404,
+      msg: '无法获取歌曲链接'
+    })
+  }
+
+  // 设置下载文件名
+  const filename = name ? `${name}.mp3` : `${id}.mp3`
+  const encodedFilename = encodeURIComponent(filename)
+
+  try {
+    // 解析URL
+    const url = new URL(audioUrl)
+    const protocol = url.protocol === 'https:' ? https : http
+
+    // 代理请求音频文件
+    const proxyReq = protocol.get(audioUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://music.163.com/'
+      }
+    }, (proxyRes) => {
+      // 设置响应头，触发浏览器下载
+      res.setHeader('Content-Type', 'audio/mpeg')
+      res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFilename}`)
+
+      if (proxyRes.headers['content-length']) {
+        res.setHeader('Content-Length', proxyRes.headers['content-length'])
+      }
+
+      // 流式传输
+      proxyRes.pipe(res)
+
+      proxyRes.on('error', (err) => {
+        console.error('[Download] 流传输出错:', err)
+        if (!res.headersSent) {
+          res.status(500).json({ code: 500, msg: '下载失败' })
+        }
+      })
+    })
+
+    proxyReq.on('error', (err) => {
+      console.error('[Download] 请求出错:', err)
+      res.status(500).json({ code: 500, msg: '下载失败' })
+    })
+
+  } catch (err) {
+    console.error('[Download] 异常:', err)
+    res.status(500).json({ code: 500, msg: '下载失败' })
+  }
+})
+
 module.exports = router
