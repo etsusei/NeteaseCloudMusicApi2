@@ -9,3 +9,6 @@ package-lock.json
 
 # Meting folder
 Meting/
+
+# Environment variables (包含敏感 Cookie)
+.env

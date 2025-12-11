@@ -1,3 +1,4 @@
+require('dotenv').config()
 const fs = require('fs')
 const path = require('path')
 const express = require('express')
@@ -6,6 +7,14 @@ const request = require('./util/request')
 const packageJSON = require('./package.json')
 const exec = require('child_process').exec
 const cache = require('apicache').middleware
+
+// VIP Cookie 配置
+const VIP_COOKIE = process.env.VIP_COOKIE || ''
+if (VIP_COOKIE) {
+  console.log('[VIP] 已加载黑胶VIP Cookie')
+} else {
+  console.log('[VIP] 未配置VIP Cookie，部分歌曲可能只能试听30秒')
+}
 
 // version check
 exec('npm info NeteaseCloudMusicApi version', (err, stdout, stderr) => {
@@ -33,13 +42,28 @@ app.use((req, res, next) => {
   req.method === 'OPTIONS' ? res.status(204).end() : next()
 })
 
-// cookie parser
+// cookie parser - 自动注入 VIP Cookie
 app.use((req, res, next) => {
-  req.cookies = {}, (req.headers.cookie || '').split(/\s*;\s*/).forEach(pair => {
+  req.cookies = {}
+
+  // 优先使用 VIP Cookie，如果用户也传了自己的 cookie 则合并
+  const cookieString = req.headers.cookie || ''
+  const vipCookieString = VIP_COOKIE || ''
+
+  // 先解析 VIP Cookie（作为基础）
+  vipCookieString.split(/\s*;\s*/).forEach(pair => {
     let crack = pair.indexOf('=')
     if (crack < 1 || crack == pair.length - 1) return
     req.cookies[decodeURIComponent(pair.slice(0, crack)).trim()] = decodeURIComponent(pair.slice(crack + 1)).trim()
   })
+
+  // 再解析用户 Cookie（如果有的话，会覆盖 VIP Cookie）
+  cookieString.split(/\s*;\s*/).forEach(pair => {
+    let crack = pair.indexOf('=')
+    if (crack < 1 || crack == pair.length - 1) return
+    req.cookies[decodeURIComponent(pair.slice(0, crack)).trim()] = decodeURIComponent(pair.slice(crack + 1)).trim()
+  })
+
   next()
 })
 
