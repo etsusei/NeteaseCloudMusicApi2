@@ -39,7 +39,7 @@ const createRequest = (method, url, data, options) => {
       headers['Content-Type'] = 'application/x-www-form-urlencoded'
     if (url.includes('music.163.com'))
       headers['Referer'] = 'https://music.163.com'
-    // headers['X-Real-IP'] = '118.88.88.88'
+    headers['X-Real-IP'] = '118.88.88.88'
 
     if (typeof options.cookie === 'object')
       headers['Cookie'] = Object.keys(options.cookie)
@@ -130,10 +130,10 @@ const createRequest = (method, url, data, options) => {
               zlib.unzip(body, function (err, buffer) {
                 const _buffer = err ? body : buffer
                 try {
-                  try{
+                  try {
                     answer.body = JSON.parse(encrypt.decrypt(_buffer).toString())
                     answer.status = answer.body.code || res.statusCode
-                  } catch(e){
+                  } catch (e) {
                     answer.body = JSON.parse(_buffer.toString())
                     answer.status = res.statusCode
                   }
@@ -152,7 +152,7 @@ const createRequest = (method, url, data, options) => {
 
               answer.body = JSON.parse(body)
               answer.status = answer.body.code || res.statusCode
-              if(answer.body.code === 502){
+              if (answer.body.code === 502) {
                 answer.status = 200
               }
             }

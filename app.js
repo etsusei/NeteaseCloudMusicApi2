@@ -75,10 +75,12 @@ app.use(bodyParser.urlencoded({ extended: false }))
 const authRouter = require('./routes/auth')
 const playlistsRouter = require('./routes/playlists')
 const exportRouter = require('./routes/export')
+const musicRouter = require('./routes/music')
 
 app.use('/api/auth', authRouter)
 app.use('/api/playlists', playlistsRouter)
 app.use('/api/export', exportRouter)
+app.use('/api/music', musicRouter)
 // ====================================================
 
 // cache (只用于网易云音乐 API，不影响上面的用户 API)
