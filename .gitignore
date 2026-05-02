@@ -12,6 +12,7 @@ Meting/
 
 # Environment variables (包含敏感 Cookie)
 .env
+.env.*
 
 # Neon frontend
 Neon/

@@ -8,6 +8,20 @@ const packageJSON = require('./package.json')
 const exec = require('child_process').exec
 const cache = require('apicache').middleware
 
+const normalizeOrigin = (value) => {
+  if (!value) return null
+  try {
+    return new URL(value.includes('://') ? value : `https://${value}`).origin
+  } catch (e) {
+    return null
+  }
+}
+
+const ALLOWED_ORIGINS = (process.env.FRONTEND_ORIGINS || 'https://ne0n.zeabur.app')
+  .split(',')
+  .map(origin => normalizeOrigin(origin.trim()))
+  .filter(Boolean)
+
 // VIP Cookie 配置
 const VIP_COOKIE = process.env.VIP_COOKIE || ''
 if (VIP_COOKIE) {
@@ -31,13 +45,28 @@ const app = express()
 // CORS & Preflight request
 app.use((req, res, next) => {
   if (req.path !== '/' && !req.path.includes('.')) {
+    const requestOrigin = normalizeOrigin(req.headers.origin)
+    const refererOrigin = normalizeOrigin(req.headers.referer)
+    const incomingOrigin = requestOrigin || refererOrigin
+
+    if (incomingOrigin && !ALLOWED_ORIGINS.includes(incomingOrigin)) {
+      return res.status(403).json({
+        code: 403,
+        msg: 'Forbidden origin'
+      })
+    }
+
     res.set({
       'Access-Control-Allow-Credentials': true,
-      'Access-Control-Allow-Origin': req.headers.origin || '*',
       'Access-Control-Allow-Headers': 'X-Requested-With,Content-Type,Authorization',
       'Access-Control-Allow-Methods': 'PUT,POST,GET,DELETE,OPTIONS',
+      'Vary': 'Origin',
       'Content-Type': 'application/json; charset=utf-8'
     })
+
+    if (requestOrigin) {
+      res.set('Access-Control-Allow-Origin', requestOrigin)
+    }
   }
   req.method === 'OPTIONS' ? res.status(204).end() : next()
 })
