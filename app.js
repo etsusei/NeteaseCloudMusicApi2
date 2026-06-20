@@ -2,6 +2,7 @@ require('dotenv').config()
 const fs = require('fs')
 const path = require('path')
 const express = require('express')
+const compression = require('compression')
 const bodyParser = require('body-parser')
 const request = require('./util/request')
 const packageJSON = require('./package.json')
@@ -41,6 +42,10 @@ exec('npm info NeteaseCloudMusicApi version', (err, stdout, stderr) => {
 })
 
 const app = express()
+
+// gzip/brotli 压缩 - 大幅缩小 song/detail 等大响应体积，提升弱网(尤其大陆访问东京)存活率
+// 必须放在所有会产生响应的中间件之前
+app.use(compression())
 
 // CORS & Preflight request
 app.use((req, res, next) => {
