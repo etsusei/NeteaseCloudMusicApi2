@@ -41,6 +41,15 @@ if (VIP_COOKIE) {
 
 const app = express()
 app.set('trust proxy', 1)
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    'X-Frame-Options': 'DENY'
+  })
+  next()
+})
 
 // gzip/brotli 压缩 - 大幅缩小 song/detail 等大响应体积，提升弱网(尤其大陆访问东京)存活率
 // 必须放在所有会产生响应的中间件之前

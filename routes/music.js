@@ -30,6 +30,18 @@ const setCachedUrl = (id, url, source) => {
   urlCache.set(id, { url, source, ts: Date.now() })
 }
 
+const normalizeSongId = (id) => String(id || '').trim()
+const isValidSongId = (id) => /^\d{1,20}$/.test(id)
+const sanitizeDownloadName = (name, fallback) => {
+  const value = String(name || fallback || 'song')
+    .replace(/[\x00-\x1f\x7f<>:"/\\|?*]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/^\.+|\.+$/g, '')
+    .trim()
+    .slice(0, 120)
+  return value || String(fallback || 'song')
+}
+
 // 内部调用 /song/url 接口（使用 VIP Cookie）
 const getSongUrlInternal = async (id, cookies) => {
   const songUrlModule = require('../module/song_url')
@@ -118,7 +130,7 @@ router.get('/url', async (req, res) => {
   }
 
   // 1. 首先尝试 VIP 接口
-  const vipResult = await getSongUrlInternal(id, req.cookies)
+  const vipResult = await getSongUrlInternal(songId, req.cookies)
   if (vipResult.success) {
     console.log(`[Music] VIP接口成功: ${id}`)
     if (!hasOwnAccount) setCachedUrl(id, vipResult.url, vipResult.source)
@@ -162,11 +174,12 @@ router.get('/url', async (req, res) => {
 // 代理下载接口 - 解决前端 CORS 跨域问题
 router.get('/download', async (req, res) => {
   const { id, name } = req.query
+  const songId = normalizeSongId(id)
 
-  if (!id) {
+  if (!isValidSongId(songId)) {
     return res.status(400).json({
       code: 400,
-      msg: 'Missing id parameter'
+      msg: 'Invalid id parameter'
     })
   }
 
@@ -184,7 +197,7 @@ router.get('/download', async (req, res) => {
     console.log(`[Download] VIP接口成功: ${id}`)
   } else {
     // 2. 尝试第三方接口
-    const fallbackResult = await getSongUrlFallback(id)
+    const fallbackResult = await getSongUrlFallback(songId)
     if (fallbackResult.success) {
       audioUrl = fallbackResult.url
       source = fallbackResult.source
@@ -201,7 +214,7 @@ router.get('/download', async (req, res) => {
   }
 
   // 设置下载文件名
-  const filename = name ? `${name}.mp3` : `${id}.mp3`
+  const filename = `${sanitizeDownloadName(name, songId)}.mp3`
   const encodedFilename = encodeURIComponent(filename)
 
   try {
