@@ -5,8 +5,6 @@ const express = require('express')
 const compression = require('compression')
 const bodyParser = require('body-parser')
 const request = require('./util/request')
-const packageJSON = require('./package.json')
-const exec = require('child_process').exec
 const apicache = require('apicache')
 // ACAO 是按请求 Origin 反射的，绝不能进缓存：否则先来的 origin 会把自己的 ACAO
 // 存进缓存，TTL 内其他合法 origin 拿到不匹配的头被浏览器拦截。
@@ -40,16 +38,6 @@ if (VIP_COOKIE) {
 } else {
   console.log('[VIP] 未配置VIP Cookie，部分歌曲可能只能试听30秒')
 }
-
-// version check
-exec('npm info NeteaseCloudMusicApi version', (err, stdout, stderr) => {
-  if (!err) {
-    let version = stdout.trim()
-    if (packageJSON.version < version) {
-      console.log(`最新版本: ${version}, 当前版本: ${packageJSON.version}, 请及时更新`)
-    }
-  }
-})
 
 const app = express()
 app.set('trust proxy', 1)
