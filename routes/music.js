@@ -41,6 +41,9 @@ const sanitizeDownloadName = (name, fallback) => {
     .slice(0, 120)
   return value || String(fallback || 'song')
 }
+const asyncRoute = (handler) => (req, res, next) => {
+  Promise.resolve(handler(req, res, next)).catch(next)
+}
 
 // 内部调用 /song/url 接口（使用 VIP Cookie）
 const getSongUrlInternal = async (id, cookies) => {
@@ -102,13 +105,13 @@ const getSongUrlFallback = async (id) => {
 }
 
 // 统一的音乐 URL 获取接口
-router.get('/url', async (req, res) => {
-  const { id } = req.query
+router.get('/url', asyncRoute(async (req, res) => {
+  const id = normalizeSongId(req.query.id)
 
-  if (!id) {
+  if (!isValidSongId(id)) {
     return res.status(400).json({
       code: 400,
-      msg: 'Missing id parameter',
+      msg: 'Invalid id parameter',
       data: null
     })
   }
@@ -130,7 +133,7 @@ router.get('/url', async (req, res) => {
   }
 
   // 1. 首先尝试 VIP 接口
-  const vipResult = await getSongUrlInternal(songId, req.cookies)
+  const vipResult = await getSongUrlInternal(id, req.cookies)
   if (vipResult.success) {
     console.log(`[Music] VIP接口成功: ${id}`)
     if (!hasOwnAccount) setCachedUrl(id, vipResult.url, vipResult.source)
@@ -169,10 +172,10 @@ router.get('/url', async (req, res) => {
     msg: '无法获取歌曲链接',
     data: null
   })
-})
+}))
 
 // 代理下载接口 - 解决前端 CORS 跨域问题
-router.get('/download', async (req, res) => {
+router.get('/download', asyncRoute(async (req, res) => {
   const { id, name } = req.query
   const songId = normalizeSongId(id)
 
@@ -190,7 +193,7 @@ router.get('/download', async (req, res) => {
   let source = null
 
   // 1. 尝试 VIP 接口
-  const vipResult = await getSongUrlInternal(id, req.cookies)
+  const vipResult = await getSongUrlInternal(songId, req.cookies)
   if (vipResult.success) {
     audioUrl = vipResult.url
     source = vipResult.source
@@ -257,6 +260,16 @@ router.get('/download', async (req, res) => {
     console.error('[Download] 异常:', err)
     res.status(500).json({ code: 500, msg: '下载失败' })
   }
+}))
+
+router.use((err, req, res, next) => {
+  console.error('[Music] Route error:', err)
+  if (res.headersSent) return next(err)
+  res.status(500).json({
+    code: 500,
+    msg: 'Music service error',
+    data: null
+  })
 })
 
 module.exports = router
