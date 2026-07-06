@@ -1,5 +1,5 @@
 const assert = require('assert')
-const request = require('request')
+const request = require('./request')
 const host = global.host || 'http://localhost:3000'
 
 describe('测试获取评论是否正常', () => {

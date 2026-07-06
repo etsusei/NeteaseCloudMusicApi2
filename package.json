@@ -29,14 +29,12 @@
   "license": "MIT",
   "dependencies": {
     "apicache": "^1.5.2",
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "compression": "^1.8.1",
     "dotenv": "^17.2.3",
     "express": "^4.17.1",
     "jsonwebtoken": "^9.0.2",
-    "pac-proxy-agent": "^3.0.1",
-    "pg": "^8.20.0",
-    "request": "^2.88.0"
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "eslint": "^6.6.0",

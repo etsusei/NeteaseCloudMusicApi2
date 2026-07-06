@@ -1,5 +1,5 @@
 const assert = require('assert')
-const request = require('request')
+const request = require('./request')
 const host = global.host || 'http://localhost:3000'
 
 console.log('注意: 测试登录需在 test/login.test.js 中填写账号密码!!!');
