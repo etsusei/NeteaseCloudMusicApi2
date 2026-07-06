@@ -2,11 +2,17 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const pool = require('../util/db');
 const { generateToken, authMiddleware } = require('../util/auth');
+const createRateLimiter = require('../util/rateLimit');
 
 const router = express.Router();
+const loginRateLimit = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { code: 429, msg: 'Too many login attempts, please try again later' }
+});
 
 // 登录
-router.post('/login', async (req, res) => {
+router.post('/login', loginRateLimit, async (req, res) => {
   const { username, password } = req.body;
 
   if (!username || !password) {

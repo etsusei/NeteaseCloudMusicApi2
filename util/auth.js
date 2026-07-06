@@ -1,7 +1,11 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'default-secret-change-me';
+const JWT_SECRET = (process.env.JWT_SECRET || '').trim();
 const JWT_EXPIRES_IN = '7d';
+
+if (!JWT_SECRET || JWT_SECRET === 'default-secret-change-me' || JWT_SECRET.length < 32) {
+  throw new Error('JWT_SECRET must be set to a strong random value of at least 32 characters');
+}
 
 // Generate JWT token
 function generateToken(user) {

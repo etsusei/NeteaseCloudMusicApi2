@@ -121,7 +121,7 @@ const createRequest = (method, url, data, options) => {
       (err, res, body) => {
         if (err) {
           answer.status = 502
-          answer.body = { code: 502, msg: err.stack }
+          answer.body = { code: 502, msg: 'Upstream request failed' }
           reject(answer)
         } else {
           answer.cookie = (res.headers['set-cookie'] || []).map(x =>

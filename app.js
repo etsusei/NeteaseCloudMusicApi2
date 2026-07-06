@@ -52,6 +52,7 @@ exec('npm info NeteaseCloudMusicApi version', (err, stdout, stderr) => {
 })
 
 const app = express()
+app.set('trust proxy', 1)
 
 // gzip/brotli 压缩 - 大幅缩小 song/detail 等大响应体积，提升弱网(尤其大陆访问东京)存活率
 // 必须放在所有会产生响应的中间件之前
@@ -241,13 +242,11 @@ fs.readdirSync(path.join(__dirname, 'module')).reverse().forEach(file => {
     question(query, request)
       .then(answer => {
         console.log('[OK]', decodeURIComponent(req.originalUrl))
-        res.append('Set-Cookie', answer.cookie)
         res.status(answer.status).send(answer.body)
       })
       .catch(answer => {
         console.log('[ERR]', decodeURIComponent(req.originalUrl))
         if (answer.body.code == '301') answer.body.msg = '需要登录'
-        res.append('Set-Cookie', answer.cookie)
         res.status(answer.status).send(answer.body)
       })
   })
