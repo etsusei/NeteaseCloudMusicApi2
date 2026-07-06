@@ -7,7 +7,12 @@ const bodyParser = require('body-parser')
 const request = require('./util/request')
 const packageJSON = require('./package.json')
 const exec = require('child_process').exec
-const cache = require('apicache').middleware
+const apicache = require('apicache')
+// ACAO 是按请求 Origin 反射的，绝不能进缓存：否则先来的 origin 会把自己的 ACAO
+// 存进缓存，TTL 内其他合法 origin 拿到不匹配的头被浏览器拦截。
+// 拉黑后缓存命中时保留上游 CORS 中间件刚设置的新鲜值。
+apicache.options({ headerBlacklist: ['access-control-allow-origin'] })
+const cache = apicache.middleware
 
 const normalizeOrigin = (value) => {
   if (!value) return null
@@ -22,6 +27,11 @@ const ALLOWED_ORIGINS = (process.env.FRONTEND_ORIGINS || 'https://ne0n.zeabur.ap
   .split(',')
   .map(origin => normalizeOrigin(origin.trim()))
   .filter(Boolean)
+
+// 本地/局域网开发来源自动放行：dev server 的 IP/端口经常变，逐个加进 FRONTEND_ORIGINS 不现实。
+// 鉴权走 Authorization 头（前端 localStorage 存 JWT），不依赖 Cookie，放行私网来源的 CSRF 风险可控。
+const PRIVATE_DEV_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/
+const isPrivateDevOrigin = (origin) => PRIVATE_DEV_ORIGIN_RE.test(origin || '')
 
 // VIP Cookie 配置
 const VIP_COOKIE = process.env.VIP_COOKIE || ''
@@ -54,7 +64,7 @@ app.use((req, res, next) => {
     const refererOrigin = normalizeOrigin(req.headers.referer)
     const incomingOrigin = requestOrigin || refererOrigin
 
-    if (incomingOrigin && !ALLOWED_ORIGINS.includes(incomingOrigin)) {
+    if (incomingOrigin && !ALLOWED_ORIGINS.includes(incomingOrigin) && !isPrivateDevOrigin(incomingOrigin)) {
       return res.status(403).json({
         code: 403,
         msg: 'Forbidden origin'
@@ -65,6 +75,8 @@ app.use((req, res, next) => {
       'Access-Control-Allow-Credentials': true,
       'Access-Control-Allow-Headers': 'X-Requested-With,Content-Type,Authorization',
       'Access-Control-Allow-Methods': 'PUT,POST,GET,DELETE,OPTIONS',
+      // 让浏览器缓存 preflight 结果 24h：带 Authorization 的请求不用每次都先跑一趟 OPTIONS
+      'Access-Control-Max-Age': '86400',
       'Vary': 'Origin',
       'Content-Type': 'application/json; charset=utf-8'
     })
@@ -118,7 +130,18 @@ app.use('/api/music', musicRouter)
 // ====================================================
 
 // cache (只用于网易云音乐 API，不影响上面的用户 API)
-app.use(cache('2 minutes', ((req, res) => res.statusCode === 200)))
+// 分级：song/detail、lyric、album 这类内容基本不变 → 服务端缓存 30 分钟；
+// 其余(搜索、榜单、song/url 等)维持 2 分钟短缓存。
+// apicache 会自动在响应加 cache-control: max-age=<剩余TTL>，浏览器/CDN 同样受益。
+const onlyOk = (req, res) => res.statusCode === 200
+const shortCache = cache('2 minutes', onlyOk)
+const longCache = cache('30 minutes', onlyOk)
+// 注意必须精确匹配：/album 前缀匹配会误伤 /album/sub(收藏操作) 等路由
+const LONG_CACHE_PATHS = ['/song/detail', '/lyric', '/album', '/artist/album']
+app.use((req, res, next) => {
+  const middleware = LONG_CACHE_PATHS.includes(req.path) ? longCache : shortCache
+  return middleware(req, res, next)
+})
 
 // static
 app.use(express.static(path.join(__dirname, 'public')))

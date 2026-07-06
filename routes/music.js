@@ -3,6 +3,33 @@ const router = express.Router()
 const https = require('https')
 const http = require('http')
 
+// 复用到第三方 API 的 TLS 连接，避免每次获取歌曲 URL 都重新握手
+const keepAliveAgent = new https.Agent({ keepAlive: true })
+
+// 歌曲 URL 内存缓存：网易返回的播放链接有时效(约 20 分钟)，缓存 10 分钟内安全。
+// 配合前端"快播完时预取下一首"，切歌可以做到基本无缝。
+const URL_CACHE_TTL = 10 * 60 * 1000
+const URL_CACHE_MAX = 500
+const urlCache = new Map()
+
+const getCachedUrl = (id) => {
+  const hit = urlCache.get(id)
+  if (!hit) return null
+  if (Date.now() - hit.ts > URL_CACHE_TTL) {
+    urlCache.delete(id)
+    return null
+  }
+  return hit
+}
+
+const setCachedUrl = (id, url, source) => {
+  // 简单 FIFO 淘汰，防止内存无限增长
+  if (urlCache.size >= URL_CACHE_MAX) {
+    urlCache.delete(urlCache.keys().next().value)
+  }
+  urlCache.set(id, { url, source, ts: Date.now() })
+}
+
 // 内部调用 /song/url 接口（使用 VIP Cookie）
 const getSongUrlInternal = async (id, cookies) => {
   const songUrlModule = require('../module/song_url')
@@ -27,8 +54,17 @@ const getSongUrlInternal = async (id, cookies) => {
 const getSongUrlFallback = async (id) => {
   const fallbackUrl = `https://api.kxzjoker.cn/api/163_music?url=https://y.music.163.com/m/song?id=${id}&level=standard&type=json`
 
+  // 注意：老版 agent-base(socks-proxy-agent 依赖)全局补丁过 https.get，
+  // 不支持 (url, options, cb) 三参数写法，必须用 options 对象形式
+  const u = new URL(fallbackUrl)
   return new Promise((resolve) => {
-    https.get(fallbackUrl, (res) => {
+    https.get({
+      protocol: u.protocol,
+      hostname: u.hostname,
+      port: u.port || 443,
+      path: u.pathname + u.search,
+      agent: keepAliveAgent
+    }, (res) => {
       let data = ''
       res.on('data', chunk => data += chunk)
       res.on('end', () => {
@@ -67,10 +103,25 @@ router.get('/url', async (req, res) => {
 
   console.log(`[Music] 获取歌曲 URL: ${id}`)
 
+  // 0. 命中内存缓存直接返回（用户自带 MUSIC_U 登录态时跳过，避免串号）
+  const hasOwnAccount = (req.headers.cookie || '').includes('MUSIC_U')
+  if (!hasOwnAccount) {
+    const cached = getCachedUrl(id)
+    if (cached) {
+      console.log(`[Music] 缓存命中: ${id}`)
+      return res.json({
+        code: 200,
+        msg: 'success',
+        data: { url: cached.url, id: id, source: cached.source + '-cached' }
+      })
+    }
+  }
+
   // 1. 首先尝试 VIP 接口
   const vipResult = await getSongUrlInternal(id, req.cookies)
   if (vipResult.success) {
     console.log(`[Music] VIP接口成功: ${id}`)
+    if (!hasOwnAccount) setCachedUrl(id, vipResult.url, vipResult.source)
     return res.json({
       code: 200,
       msg: 'success',
@@ -87,6 +138,7 @@ router.get('/url', async (req, res) => {
   const fallbackResult = await getSongUrlFallback(id)
   if (fallbackResult.success) {
     console.log(`[Music] 第三方接口成功: ${id}`)
+    if (!hasOwnAccount) setCachedUrl(id, fallbackResult.url, fallbackResult.source)
     return res.json({
       code: 200,
       msg: 'success',

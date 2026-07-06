@@ -111,6 +111,9 @@ const createRequest = (method, url, data, options) => {
       settings.agent = new PacProxyAgent(options.proxy)
     } else {
       settings.proxy = options.proxy
+      // 无代理时复用 TCP/TLS 连接(keep-alive)：
+      // 否则每个请求都重新握手，东京→网易云跨国 RTT 下每次白等几百毫秒
+      if (!options.proxy) settings.forever = true
     }
 
     request(
