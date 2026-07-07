@@ -71,7 +71,7 @@ app.use((req, res, next) => {
 
     res.set({
       'Access-Control-Allow-Credentials': true,
-      'Access-Control-Allow-Headers': 'X-Requested-With,Content-Type,Authorization',
+      'Access-Control-Allow-Headers': 'X-Requested-With,Content-Type,Authorization,X-Netease-Cookie',
       'Access-Control-Allow-Methods': 'PUT,POST,GET,DELETE,OPTIONS',
       // 让浏览器缓存 preflight 结果 24h：带 Authorization 的请求不用每次都先跑一趟 OPTIONS
       'Access-Control-Max-Age': '86400',
@@ -86,27 +86,34 @@ app.use((req, res, next) => {
   req.method === 'OPTIONS' ? res.status(204).end() : next()
 })
 
-// cookie parser - 自动注入 VIP Cookie
+// cookie parser - 自动注入 VIP Cookie / 识别网易云登录用户
 app.use((req, res, next) => {
   req.cookies = {}
 
-  // 优先使用 VIP Cookie，如果用户也传了自己的 cookie 则合并
-  const cookieString = req.headers.cookie || ''
-  const vipCookieString = VIP_COOKIE || ''
+  const appendCookies = (cookieString) => {
+    ;(cookieString || '').split(/\s*;\s*/).forEach(pair => {
+      let crack = pair.indexOf('=')
+      if (crack < 1 || crack == pair.length - 1) return
+      req.cookies[decodeURIComponent(pair.slice(0, crack)).trim()] = decodeURIComponent(pair.slice(crack + 1)).trim()
+    })
+  }
 
-  // 先解析 VIP Cookie（作为基础）
-  vipCookieString.split(/\s*;\s*/).forEach(pair => {
-    let crack = pair.indexOf('=')
-    if (crack < 1 || crack == pair.length - 1) return
-    req.cookies[decodeURIComponent(pair.slice(0, crack)).trim()] = decodeURIComponent(pair.slice(crack + 1)).trim()
-  })
+  // 网易云登录用户通过 X-Netease-Cookie 头携带自己的登录态（前后端跨域，浏览器不会自动带 Cookie）。
+  // 严格模式：识别到用户登录态就完全不注入服务器 VIP Cookie，
+  // 播放权益、听歌记录、歌单操作都归属用户自己的账号，绝不与 VIP 账号混用。
+  const rawUserCookie = req.headers['x-netease-cookie']
+  if (rawUserCookie) {
+    let decoded = rawUserCookie
+    try { decoded = decodeURIComponent(rawUserCookie) } catch (e) { /* 非法编码时按原文解析 */ }
+    appendCookies(decoded)
+    req.userAccount = !!req.cookies.MUSIC_U
+  }
 
-  // 再解析用户 Cookie（如果有的话，会覆盖 VIP Cookie）
-  cookieString.split(/\s*;\s*/).forEach(pair => {
-    let crack = pair.indexOf('=')
-    if (crack < 1 || crack == pair.length - 1) return
-    req.cookies[decodeURIComponent(pair.slice(0, crack)).trim()] = decodeURIComponent(pair.slice(crack + 1)).trim()
-  })
+  if (!req.userAccount) {
+    // 匿名/自建账号用户：维持原逻辑，VIP Cookie 作基础，浏览器 Cookie 覆盖
+    appendCookies(VIP_COOKIE)
+    appendCookies(req.headers.cookie)
+  }
 
   next()
 })
@@ -139,6 +146,9 @@ const longCache = cache('30 minutes', onlyOk)
 // 注意必须精确匹配：/album 前缀匹配会误伤 /album/sub(收藏操作) 等路由
 const LONG_CACHE_PATHS = ['/song/detail', '/lyric', '/album', '/artist/album']
 app.use((req, res, next) => {
+  // 用户登录态的请求绝不能进共享缓存：私人歌单/播放权益会串号；
+  // 登录轮询接口(/login/qr/check 等)缓存了会卡在同一个状态
+  if (req.userAccount || req.path.startsWith('/login')) return next()
   const middleware = LONG_CACHE_PATHS.includes(req.path) ? longCache : shortCache
   return middleware(req, res, next)
 })

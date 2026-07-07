@@ -159,6 +159,49 @@ const getSongUrlFallback = async (id, level = 'standard') => {
   })
 }
 
+// 网易云登录用户的严格取链：只用用户自己的账号，试听/不可播如实反馈，不走 VIP/第三方兜底。
+// 非会员播 VIP 歌时网易会返回 freeTrialInfo(试听片段的完整可播 url)，这里透传给前端提示。
+const getSongUrlForUser = async (id, cookies) => {
+  const songUrlModule = require('../module/song_url')
+  const request = require('../util/request')
+
+  let song = null
+  try {
+    const result = await songUrlModule({ id, br: 320000, cookie: { ...(cookies || {}) } }, request)
+    song = result.body && result.body.data && result.body.data[0]
+  } catch (e) {
+    const msg = e && (e.message || (e.body && e.body.msg)) || String(e)
+    console.log('[Music] 用户账号取链失败:', msg)
+  }
+
+  if (song && song.url) {
+    const trial = !!song.freeTrialInfo
+    return {
+      code: 200,
+      msg: 'success',
+      data: {
+        url: song.url,
+        id: id,
+        source: 'netease-user',
+        playInfo: {
+          trial,
+          reason: trial ? 'vip_required' : null,
+          trialStart: trial ? song.freeTrialInfo.start : null,
+          trialEnd: trial ? song.freeTrialInfo.end : null
+        }
+      }
+    }
+  }
+
+  // fee=1 表示 VIP 专属；其余无 url 的情况(无版权/地区限制/下架)统一 unavailable
+  const reason = song && song.fee === 1 ? 'vip_required' : 'unavailable'
+  return {
+    code: 404,
+    msg: reason === 'vip_required' ? '该歌曲需要 VIP，当前账号无法播放' : '该歌曲在当前账号/地区不可播放',
+    data: { url: null, id: id, playInfo: { trial: false, reason } }
+  }
+}
+
 // 判断实际拿到的资源是否满足请求的音质挡位
 const isQualityMatched = (level, actual) => {
   const expected = QUALITY_LEVELS[level]
@@ -219,6 +262,13 @@ router.get('/url', asyncRoute(async (req, res) => {
   }
 
   console.log(`[Music] 获取歌曲 URL: ${id}`)
+
+  // 网易云登录用户：严格模式，只用用户自己的账号，不进共享缓存、不走 VIP/第三方兜底
+  if (req.userAccount) {
+    const result = await getSongUrlForUser(id, req.cookies)
+    console.log(`[Music] 用户账号取链: ${id} -> ${result.code}${result.data && result.data.playInfo && result.data.playInfo.trial ? ' (试听)' : ''}`)
+    return res.json(result)
+  }
 
   // 0. 命中内存缓存直接返回（用户自带 MUSIC_U 登录态时跳过，避免串号）
   const hasOwnAccount = (req.headers.cookie || '').includes('MUSIC_U')
@@ -285,7 +335,7 @@ router.get('/download/check', asyncRoute(async (req, res) => {
     return res.status(400).json({ code: 400, msg: 'Invalid id parameter' })
   }
 
-  const hasOwnAccount = (req.headers.cookie || '').includes('MUSIC_U')
+  const hasOwnAccount = req.userAccount === true || (req.headers.cookie || '').includes('MUSIC_U')
   const result = await resolveDownloadSource(songId, level, req.cookies, !hasOwnAccount)
 
   if (!result.success) {
@@ -330,7 +380,7 @@ router.get('/download', asyncRoute(async (req, res) => {
 
   console.log(`[Download] 开始下载: ${id} (${level})`)
 
-  const hasOwnAccount = (req.headers.cookie || '').includes('MUSIC_U')
+  const hasOwnAccount = req.userAccount === true || (req.headers.cookie || '').includes('MUSIC_U')
   const resolved = await resolveDownloadSource(songId, level, req.cookies, !hasOwnAccount)
 
   if (!resolved.success) {

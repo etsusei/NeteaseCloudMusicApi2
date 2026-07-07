@@ -148,7 +148,8 @@ const createRequest = (method, url, data = {}, options = {}) => {
 
           answer.body = JSON.parse(body)
           answer.status = answer.body.code || res.status
-          if (answer.body.code === 502) answer.status = 200
+          // 502=账号密码错误提示；800~803=二维码登录的轮询状态，都属于正常业务响应
+          if ([502, 800, 801, 802, 803].includes(answer.body.code)) answer.status = 200
         } catch (e) {
           answer.body = body
           answer.status = res.status
