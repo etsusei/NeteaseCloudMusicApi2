@@ -153,8 +153,12 @@ router.put('/users/:id', async (req, res) => {
     }
 
     if (typeof is_admin === 'boolean') {
-      if (id === req.user.id && !is_admin) {
-        return res.status(400).json({ code: 400, msg: '不能撤销自己的管理员权限' });
+      // 降级管理员时，确保系统至少保留一名管理员
+      if (!is_admin && existing.rows[0].is_admin) {
+        const adminCount = await pool.query('SELECT COUNT(*)::int AS c FROM users WHERE is_admin');
+        if (adminCount.rows[0].c <= 1) {
+          return res.status(400).json({ code: 400, msg: '系统至少需要保留一名管理员' });
+        }
       }
       await pool.query('UPDATE users SET is_admin = $1 WHERE id = $2', [is_admin, id]);
     }
@@ -186,10 +190,16 @@ router.delete('/users/:id', async (req, res) => {
   }
 
   try {
-    const result = await pool.query('DELETE FROM users WHERE id = $1 RETURNING id', [id]);
-    if (result.rows.length === 0) {
+    const existing = await pool.query('SELECT id, is_admin FROM users WHERE id = $1', [id]);
+    if (existing.rows.length === 0) {
       return res.status(404).json({ code: 404, msg: '用户不存在' });
     }
+    // 管理员账号不能直接删除，需先解除管理员权限
+    if (existing.rows[0].is_admin) {
+      return res.status(400).json({ code: 400, msg: '请先解除该用户的管理员权限，再删除' });
+    }
+
+    await pool.query('DELETE FROM users WHERE id = $1', [id]);
     res.json({ code: 200, msg: '删除成功' });
   } catch (err) {
     console.error('Admin delete user error:', err);
