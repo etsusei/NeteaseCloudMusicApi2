@@ -135,6 +135,8 @@ const createRequest = (method, url, data = {}, options = {}) => {
                   answer.body = JSON.parse(_buffer.toString())
                   answer.status = res.status
                 }
+                // 800~803=二维码登录轮询状态，属于正常业务响应
+                if ([800, 801, 802, 803].includes(answer.body.code)) answer.status = 200
               } catch (e) {
                 answer.body = _buffer.toString()
                 answer.status = res.status

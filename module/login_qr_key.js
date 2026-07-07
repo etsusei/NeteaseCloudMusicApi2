@@ -1,19 +1,24 @@
 // 二维码登录 - 获取 unikey
+// 走 eapi 客户端协议 + PC 设备指纹 + 匿名 token：
+// 旧的网页版 weapi 流程已被网易下线，扫码确认后会返回 8821 风控
 
-module.exports = (query, request) => {
-  // 登录流程必须用干净的 cookie：中间件可能已注入服务器 VIP 账号的登录态，
-  // 带着它调登录接口会把扫码流程关联到 VIP 账号上
-  const cookie = { ...(query.cookie || {}) }
-  delete cookie.MUSIC_U
-  delete cookie.MUSIC_A
-  delete cookie.__csrf
+const { getAnonymousToken, DEVICE_COOKIE } = require('../util/anonymous')
 
-  const data = { type: 1 }
-  return request(
-    'POST', `https://music.163.com/weapi/login/qrcode/unikey`, data,
-    { crypto: 'weapi', cookie, proxy: query.proxy }
-  ).then((result) => ({
+module.exports = async (query, request) => {
+  const cookie = { ...DEVICE_COOKIE }
+  const anonToken = await getAnonymousToken().catch((e) => {
+    console.log('[QR] 匿名 token 获取失败:', e && (e.message || (e.body && e.body.message)) || String(e))
+    return ''
+  })
+  if (anonToken) cookie.MUSIC_A = anonToken
+
+  const data = { type: 3 }
+  const result = await request(
+    'POST', `https://interface.music.163.com/eapi/login/qrcode/unikey`, data,
+    { crypto: 'eapi', url: '/api/login/qrcode/unikey', cookie, proxy: query.proxy }
+  )
+  return {
     status: 200,
     body: { code: 200, data: result.body }
-  }))
+  }
 }
