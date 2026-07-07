@@ -35,4 +35,14 @@ function authMiddleware(req, res, next) {
   }
 }
 
-module.exports = { generateToken, authMiddleware, JWT_SECRET };
+// Verify admin permission middleware (requires authMiddleware first)
+function adminMiddleware(req, res, next) {
+  authMiddleware(req, res, () => {
+    if (!req.user || !req.user.is_admin) {
+      return res.status(403).json({ code: 403, msg: '无管理员权限' });
+    }
+    next();
+  });
+}
+
+module.exports = { generateToken, authMiddleware, adminMiddleware, JWT_SECRET };
