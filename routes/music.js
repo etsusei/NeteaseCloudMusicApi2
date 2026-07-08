@@ -56,6 +56,18 @@ const asyncRoute = (handler) => (req, res, next) => {
   Promise.resolve(handler(req, res, next)).catch(next)
 }
 
+// 网易 CDN(*.126.net / *.163.com)支持 https；升级协议,避免 https 页面直连 http 音频被 mixed-content 拦截
+const upgradeToHttps = (rawUrl) => {
+  try {
+    const u = new URL(rawUrl)
+    if (u.protocol === 'http:' && /(\.126\.net|\.163\.com)$/.test(u.hostname)) {
+      u.protocol = 'https:'
+      return u.toString()
+    }
+  } catch (e) { /* 解析失败保持原样 */ }
+  return rawUrl
+}
+
 // 从音频 URL 的路径后缀推断格式（第三方接口不一定返回格式字段）
 const inferFormatFromUrl = (url) => {
   try {
@@ -361,6 +373,39 @@ router.get('/download/check', asyncRoute(async (req, res) => {
         level: result.level,
         source: result.source
       }
+    }
+  })
+}))
+
+// 直链解析接口：返回网易 CDN 直链让前端浏览器直接下载。
+// 音频不再经服务器中转——海外服务器回国带宽极小(代理下载只有几 KB/s)，
+// 而网易 CDN 对国内用户是本地网络，且带 access-control-allow-origin: *，前端可直接 fetch。
+router.get('/download/url', asyncRoute(async (req, res) => {
+  const songId = normalizeSongId(req.query.id)
+  const level = normalizeLevel(req.query.level)
+
+  if (!isValidSongId(songId)) {
+    return res.status(400).json({ code: 400, msg: 'Invalid id parameter' })
+  }
+
+  const hasOwnAccount = req.userAccount === true || (req.headers.cookie || '').includes('MUSIC_U')
+  const resolved = await resolveDownloadSource(songId, level, req.cookies, !hasOwnAccount)
+
+  if (!resolved.success) {
+    console.log(`[Download] 直链解析失败: ${songId} (${level})`)
+    return res.json({ code: 404, msg: '无法获取歌曲链接', data: null })
+  }
+
+  console.log(`[Download] 直链解析: ${songId} (${level}) -> ${resolved.source}${resolved.cached ? '(缓存)' : ''}`)
+  return res.json({
+    code: 200,
+    msg: 'success',
+    data: {
+      url: upgradeToHttps(resolved.url),
+      format: resolved.format,
+      br: resolved.br,
+      level: resolved.level,
+      source: resolved.source
     }
   })
 }))
