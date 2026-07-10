@@ -110,8 +110,9 @@ app.use((req, res, next) => {
   }
 
   if (!req.userAccount) {
-    // 匿名/自建账号用户：维持原逻辑，VIP Cookie 作基础，浏览器 Cookie 覆盖
-    appendCookies(VIP_COOKIE)
+    // 登录/验证码必须使用独立会话，不能混入服务器 VIP 账号的 MUSIC_U。
+    const isNeteaseAuthFlow = req.path.startsWith('/login') || req.path.startsWith('/captcha')
+    if (!isNeteaseAuthFlow) appendCookies(VIP_COOKIE)
     appendCookies(req.headers.cookie)
   }
 
@@ -121,6 +122,19 @@ app.use((req, res, next) => {
 // body parser
 app.use(bodyParser.json())
 app.use(bodyParser.urlencoded({ extended: false }))
+
+// 网易云短信和登录接口单独限流，避免误触及上游 IP 风控。
+const createRateLimiter = require('./util/rateLimit')
+app.use('/captcha/sent', createRateLimiter({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  message: { code: 429, msg: '验证码发送过于频繁，请稍后再试' }
+}))
+app.use('/login/cellphone', createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { code: 429, msg: '登录尝试过于频繁，请稍后再试' }
+}))
 
 // ========== 用户认证和歌单 API (不使用缓存) ==========
 const authRouter = require('./routes/auth')
@@ -148,7 +162,7 @@ const LONG_CACHE_PATHS = ['/song/detail', '/lyric', '/album', '/artist/album']
 app.use((req, res, next) => {
   // 用户登录态的请求绝不能进共享缓存：私人歌单/播放权益会串号；
   // 登录轮询接口(/login/qr/check 等)缓存了会卡在同一个状态
-  if (req.userAccount || req.path.startsWith('/login')) return next()
+  if (req.userAccount || req.path.startsWith('/login') || req.path.startsWith('/captcha')) return next()
   const middleware = LONG_CACHE_PATHS.includes(req.path) ? longCache : shortCache
   return middleware(req, res, next)
 })
