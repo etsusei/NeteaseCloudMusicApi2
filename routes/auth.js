@@ -55,6 +55,25 @@ router.post('/login', loginRateLimit, async (req, res) => {
   }
 });
 
+// 普通自建账号滑动续期：只有当前 token 仍有效时才能换取新的 7 天 token。
+// 管理员凭证保持固定有效期，避免高权限会话被无限续签。
+router.post('/refresh', authMiddleware, (req, res) => {
+  if (req.user.is_admin) {
+    return res.status(403).json({
+      code: 403,
+      msg: '管理员登录不支持自动续期',
+      auth_code: 'ADMIN_REFRESH_DISABLED'
+    });
+  }
+
+  const token = generateToken(req.user);
+  res.json({
+    code: 200,
+    msg: '续期成功',
+    data: { token }
+  });
+});
+
 // 获取当前用户信息
 router.get('/me', authMiddleware, async (req, res) => {
   try {
